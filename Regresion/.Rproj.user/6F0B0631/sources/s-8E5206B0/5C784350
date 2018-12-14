@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1543328409656.000,
+    "dirty" : true,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "5C784350",
+    "lastKnownWriteTime" : 1540920745,
+    "last_content_update" : 1543336889506,
+    "path" : "C:/Users/frank/OneDrive/CUNEF - MDS/Técnicas de Clasificación/titanic.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "86,0",
+        "scrollLine" : "58"
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

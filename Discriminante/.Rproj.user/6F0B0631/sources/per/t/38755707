@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1542913003419.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2463609794",
+    "id" : "38755707",
+    "lastKnownWriteTime" : 1542915284,
+    "last_content_update" : 1542915284298,
+    "path" : "C:/Users/frank/OneDrive/CUNEF - MDS/Técnicas de Clasificación/DiscriminanteIris/AD_iris.R",
+    "project_path" : "AD_iris.R",
+    "properties" : {
+        "cursorPosition" : "50,14",
+        "scrollLine" : "44"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

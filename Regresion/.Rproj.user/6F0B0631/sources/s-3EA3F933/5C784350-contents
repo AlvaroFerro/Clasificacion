@@ -1,0 +1,86 @@
+# The dataset (training) is a collection of data about some of the passengers (889 to be precise)
+# and the goal of the competition is to predict the survival (either 1 if the passenger survived or 0 if they did not) 
+# based on some features such as the class of service, the sex, the age etc. 
+# As you can see, we are going to use both categorical and continuous variables.
+
+# Make sure that the parameter na.strings is equal to c("") so that each missing value is coded as a NA. This will help us in the next steps.
+
+training.data.raw <- read.csv('C:/Users/frank/OneDrive/CUNEF - MDS/Técnicas de Clasificación/titanic.csv',header=T,na.strings=c(""))
+str(training.data.raw)
+
+# Now we need to check for missing values and look how many unique values there are for each variable using the sapply() function which applies the function passed as argument to each column of the dataframe.
+
+sapply(training.data.raw,function(x) sum(is.na(x)))
+sapply(training.data.raw, function(x) length(unique(x)))
+
+# The variable cabin has too many missing values, we will not use it. We will also drop PassengerId since it is only an index and Ticket.
+# Using the subset() function we subset the original dataset selecting the relevant columns only.
+
+data <- subset(training.data.raw,select=c(2,3,5,6,7,8,10,12))
+
+# to replace the missing values with the average, the median or the mode of the existing one. I'll be using the average.
+
+data$Age[is.na(data$Age)] <- mean(data$Age,na.rm=T)
+
+# A factor is how R deals categorical variables.
+# We can check the encoding using the following lines of code
+
+is.factor(data$Sex)
+
+is.factor(data$Embarked)
+
+# We can use the contrasts() function. This function will show us how the variables have been dummyfied by R and how to interpret them in a model.
+
+contrasts(data$Sex)
+contrasts(data$Embarked)
+
+# As for the missing values in Embarked, since there are only two, we will discard those two rows.
+
+data <- data[!is.na(data$Embarked),]
+rownames(data) <- NULL
+
+# We split the data into two chunks: training and testing set. The training set will be used to fit our model which we will be testing over the testing set.
+
+train <- data[1:510,]
+test <- data[511:889,]
+
+# Now, let's fit the model. Be sure to specify the parameter family=binomial in the glm() function.
+
+model <- glm(Survived ~.,family=binomial(link='logit'),data=train)
+
+# By using function summary() we obtain the results of our model:
+
+summary(model)
+exp(coef(model)) #Ventajas relativas
+# Now we can run the anova() function on the model to analyze the table of deviance
+
+anova(model, test = "Chisq")
+str(data)
+# Analyzing the table we can see the drop in deviance when adding each variable one at a time.
+# Again, adding Pclass, Sex and Age significantly reduces the residual deviance. 
+# The other variables seem to improve the model less even though SibSp has a low p-value.
+# A large p-value here indicates that the model without the variable explains more or less the same amount of variation.
+
+# While no exact equivalent to the R2 of linear regression exists, the McFadden R2 index can be used to assess the model fit.
+
+install.packages("pscl")
+library(pscl)
+pR2(model)
+
+# In the steps above, we briefly evaluated the fitting of the model, 
+# now we would like to see how the model is doing when predicting y on a new set of data. 
+# By setting the parameter type='response', R will output probabilities in the form of P(y=1|X). 
+# Our decision boundary will be 0.5. If P(y=1|X) > 0.5 then y = 1 otherwise y=0. 
+# Note that for some applications different thresholds could be a better option.
+
+fitted.results <- predict(model,newdata=subset(test,select=c(2,3,4,5,6,7,8)),type='response')
+fitted.results <- ifelse(fitted.results > 0.68,1,0)
+
+
+logit.perf <- table(test$Survived, fitted.results, dnn=c("Actual", "Predicted"))
+
+logit.perf
+
+
+misClasificError <- mean(fitted.results != test$Survived)
+print(paste('Accuracy',1-misClasificError))
