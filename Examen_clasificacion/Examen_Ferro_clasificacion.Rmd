@@ -1,0 +1,531 @@
+---
+title: "Examen clasificacion"
+author: "Alvaro Ferro Perez"
+date: "05/02/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+EXAMEN de Técnicas de Clasificación 2018/2019
+
+Exploración y preparación de los datos
+
+Para la resolución del examen de Técnicas de Clasificación, se va a proceder, en primer lugar, a realizar la carga de librerías que se utilizarán a lo largo del desarrollo del mismo.
+
+```{r, include=FALSE, echo=FALSE}
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(pscl)
+library(ggplot2)
+library(ROCR)
+library(car)
+library(mvnormtest)
+library(klaR)
+library(MASS)
+library(gmodels)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(boot)
+library(base)
+library(biotools)
+library(plyr)
+```
+*Resumen ejecutivo*
+El objetivo del siguiente informe será realizar una comparativa entre trés técnicas para ver cual es mejor para realizar una predicción o clasificación de una nueva observación.
+
+Usaremos los modelos de regresión logística y árboles de clasificación para llevar a cabo nuestro análisis y comparación.
+
+A tener en cuenta es que este documento contiene todo el código que se ha usado y algunos comentarios. Se deberá acompañar este documento del informe de negocio para obtener el 100% de información.
+
+*INTRODUCCION*
+
+La encuesta de Presupuestos familiares (EPF) es realizada cada año por el Instituto nacional de estadística, siendo su objetivo conocer las comparativas con el fin de conseguir el casto en consumo de los hogares españoles, asi com la distribución del mismo entre las diversas parcelas consumistas, de esa manera reemplaza a la Encuesta continua de Presupuestos Familiares(ECPF) que estuvo en vigor desde el año 1997 al 2005 incorporando diversas mejora meteorologicas, tales como el cambio de periodicidad (de trimestral a anual), asi como el aumento del tamaño de la muestra.
+
+La EPF otorga la informacion imprescindible de las estimaciones sobre el gasto en consumo de los hogares de la contabilidad Nacional y para actualizar las ponderaciones del indice deprecios al Consumo(IPC).
+
+Los gastos de consumo que se registran en la EPF se refieren tanto al flujo monetario que destina el hogar, en este caso, single, al pago de determinados bienes y servicios de consumo final asi como al valor de determinados consumos no monetarios efectuados por los hogares. Estos ultimos son por ejemplo nuestra variable 'REGTEN'la cual tomarÃ¡ valor 0 en caso de alquiler imputado/pago de hipoteca.
+
+Las variables objeto de estudio son las siguientes:
+
+:Tabla de las variables objeto de estudio
+
+
+| VARIABLES | DEFINICION                                                                       |
+|-----------|----------------------------------------------------------------------------------|
+| cat2      | Variable de clasificacion de hogares segun su gasto en consumo de vacuno anual   |
+| cat3      | Variable de clasificacion de hogares segun su gasto en consumo de vacuno anual   |
+| TAMAMU    | Tamaño de los municipios                                                         |
+| DENSIDAD  | Densidad de la poblacion                                                         |
+| EDAD      | Edad, expresada en años                                                          |
+| SEXO      | Sexo de la muestra                                                               |
+| ESTUD     | Nivel de estudios completados                                                    |
+| LAB       | Situacion laboral                                                                |
+| REGTEN    | Regimen de tenencia de la vivienda                                               |
+| SUPERF    | Superficie de la vivienda en metros cuadrados                                    |
+| IMPEXAC   | Importe exacto de los ingresos mensuales netos totales del hogar en cientos      |
+
+Todos estos datos fueron extraidos de una muestra de 4220 hogares distribuidos por todo el territorio nacional, para comenzar, realizaremos un análisis exploratorio con la finalidad de identificar las variables explicativas, la variable dependiente, modificaciones necesarias para la base de datos...
+
+
+
+*Análisis exploratorio*
+
+Seguidamente, se va a realizar la carga de los datos y se hará un escueto análisis exploratorio y una limpieza pertinente para trabajar correctamente la misma.
+
+```{r, include=FALSE,echo=FALSE}
+datos <- read_xlsx('BDexamen2.xlsx', sheet='bd', col_names = TRUE)
+
+
+set.seed(1234)
+str(datos)
+summary(datos)
+
+ExploreNA <- function(datos) {
+  TrueNA <- is.na.data.frame(datos)
+  SumNA <- colSums(TrueNA)
+  PorcentNA <- colSums(TrueNA) / nrow(datos)*100
+  VariableNA <- data.frame(SumNA, PorcentNA)
+  
+  return(VariableNA)
+}
+
+ExploreNA(datos)
+datos<- na.omit(datos)
+ExploreNA(datos)
+
+datos$REGTEN <- as.factor(datos$REGTEN)
+datos$TAMAMU <- as.factor(datos$TAMAMU)
+datos$DENSIDAD <- as.factor(datos$DENSIDAD)
+datos$SEXO <- as.factor(datos$SEXO)
+datos$ESTUD <- as.factor(datos$ESTUD)
+datos$LAB <- as.factor(datos$LAB)
+datos$cat2 <- as.factor(datos$cat2)
+datos$cat3 <- as.factor(datos$cat3)
+datos$EDAD<- as.numeric(datos$EDAD)
+
+str(datos)
+train <- sample(nrow(datos), 0.8*nrow(datos))
+datos_train <- datos[train,]
+datos_test <- datos[-train,]
+```
+
+```{r}
+set.seed(1234)
+str(datos_train)
+summary(datos)
+```
+
+Una vez los datos han sido limpiados y preparados, se representan las variables a predecir o clasificar tanto para el train como para el test con el objetivo de ver si la muestra está balanceada.
+
+```{r, include=TRUE,echo=TRUE}
+set.seed(1234)
+par(mfrow = c(1,2)) 
+plot(as.factor(datos_train$cat2), main = "Muestra de training - cat2") 
+plot(as.factor(datos_test$cat2), main = "Muestra de test - cat2")
+
+par(mfrow = c(1,2)) 
+plot(as.factor(datos_train$cat3), main = "Muestra de training - cat3") 
+plot(as.factor(datos_test$cat3), main = "Muestra de test - cat3")
+```
+Estos graficos sirven para observar como están de balanceadas nuestras muestras. En este caso, lo hacemos tanto para la variable cat 2 como cat3 que como podemos observar ambas estan balanceadas.
+
+En este punto, tenemos la base de datos lista para realizar todos los analisis.
+
+
+```{r,echo=FALSE,include=FALSE}
+set.seed(1234)
+col_names <- c('TamanoMunicipio', 'DensidadZona', 'Edad', 'Sexo', 'Estudios', 
+               'SituacionLaboral', 'Vivienda', 'Superficie', 'Ingresos', 'Categoria2', 'Categoria3')
+
+datos_convertidos <- datos
+
+names(datos_convertidos) <- col_names
+str(datos_convertidos)
+```
+
+```{r, include=FALSE, echo=FALSE}
+set.seed(1234)
+datos_convertidos$TamanoMunicipio <- revalue(datos_convertidos$TamanoMunicipio, c("0"="Menos de 10.000 habs", "1"="Mas de 10.000 habs"))
+
+datos_convertidos$DensidadZona <- revalue(datos_convertidos$DensidadZona, c('1' = 'Densamente poblada', 
+                                                                            '2' = 'Intermedia', 
+                                                                            '3' = 'Diseminada'))
+datos_convertidos$Sexo <- revalue(datos_convertidos$Sexo, c('0' = 'Mujer', '1' = 'Hombre'))
+
+datos_convertidos$Estudios <- revalue(datos_convertidos$Estudios, c('1' = 'Inferior ESO', '2' = 'Primera etapa ESO', 
+                                                                    '3' = 'Segunda etapa ESO', '4' = 'Superior'))
+
+datos_convertidos$SituacionLaboral <- revalue(datos_convertidos$SituacionLaboral, c('1' = 'Ocupado JC', '2' = 'Ocupado JP', 
+                                                                    '3' = 'Parado', '4' = 'Jubilado/otros'))
+
+datos_convertidos$Vivienda <- revalue(datos_convertidos$Vivienda, c('0' = 'Alquiler/Hipoteca', '1' = 'No hipoteca, cesión   gratuita/semigratuita o renta antigua'))
+
+datos_convertidos$Categoria3 <- revalue(datos_convertidos$Categoria3, c('1' = 'Consumo muy bajo', '2' = 'Consumo bajo-medio', 
+                                                                    '3' = 'Consumo medio-alto'))
+
+```
+
+```{r}
+set.seed(1234)
+datos_convertidos$Ingresos <- datos_convertidos$Ingresos * 100
+datos_convertidos <- datos_convertidos[, -10]
+```
+
+```{r}
+set.seed(1234)
+str(datos_convertidos)
+datos_adisc <- datos_convertidos
+```
+
+Para poder comprobar la normalidad de las variables, estas van a ser representadas. Las variables de tipo factor también van a ser representadas con gráficos de barras de colores. Se comprobará si existen grandes diferencias entre los consumos de vacuno (cat3) para las diferentes categorías de las variables.
+
+  - (num) En referencia a la Edad, la distribución está claramente desviada hacia la derecha. No parece que haya un reparto heterogéneo según categoría.
+  - (num) En referencia a la Superficie, la distribución parece normal, pero tiene algún atípico en la derecha.
+  - (num) En referencia a los Ingresos, la distribución parece normal.
+  - (factor) En referencia al Tamaño del municipio, no parece que hayan grandes diferencias entre los municipios pequeños y grandes.
+  - (factor) En referencia a la Densidad de la zona, tampoco parece que haya grandes diferencias.
+  - (factor) En referencia al Sexo, tampoco hay gran diferencia.
+  - (factor) En referencia al Nivel de estudios, sí que se aprecia diferencia entre los que más estudios tienen y los que menos.
+  - (factor) En referencia a la Situación laboral, sí que se aprecia diferencia entre los inactivos y ocupados a tiempo completo por un lado, y los otros por otro lado.
+  - (factor) En referencia al régimen de Vivienda, sí que hay diferencia.
+  
+```{r, include=T,echo=T}
+library(ggplot2)
+ggplot(data = datos_adisc, mapping = aes(x = Edad)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = Superficie)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = Ingresos)) +
+  geom_bar()
+ggplot(data = datos_adisc, mapping = aes(x = TamanoMunicipio)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = DensidadZona)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = Sexo)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = Estudios)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = SituacionLaboral)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+ggplot(data = datos_adisc, mapping = aes(x = Vivienda)) +
+  geom_bar(mapping = aes(fill = Categoria3))
+```
+
+Aunque a priori parece que está demostrada la no normalidad de las variables, se va a realizar el test de Saphiro para corroborarlo.
+Evidentemente se confirma la no normalidad de todas las variables numéricas.
+H0: Es normal, H1: No es normal. Por tanto buscaremos rechazar la hipótesis nula, queremos que nuestros datos no sean normales.
+```{r, include=T,echo=T}
+set.seed(1234)
+data_disc_num <- datos_adisc[, c(3, 8:10)]
+
+cons_muybajo <- data_disc_num %>%
+  filter(Categoria3 == "Consumo muy bajo")
+cons_bajomedio <- data_disc_num %>%
+  filter(Categoria3 == "Consumo bajo-medio")
+cons_medioalto <- data_disc_num %>%
+  filter(Categoria3 == "Consumo medio-alto")
+
+cons_muybajo <- t(cons_muybajo[,-4])
+mshapiro.test(cons_muybajo)
+cons_bajomedio <- t(cons_bajomedio[,-4])
+mshapiro.test(cons_bajomedio)
+cons_medioalto <- t(cons_medioalto[,-4])
+mshapiro.test(cons_medioalto)
+```
+
+Además, con el fin de corregir la normalidad, se van a escalar las variables.
+
+```{r}
+set.seed(1234)
+data_disc_num$Edad <- as.integer(data_disc_num$Edad)
+data_disc_num$Superficie <- as.integer(data_disc_num$Superficie)
+data_disc_num$Ingresos <- as.integer(data_disc_num$Ingresos)
+str(data_disc_num)
+```
+En estadística, la prueba de Bartlett se utiliza para probar si k muestras provienen de poblaciones con la misma varianza. A las varianzas iguales a través de las muestras se llama homocedasticidad u homogeneidad de varianzas, es sensible a las desviaciones de la normalidad.
+
+```{r}
+set.seed(1234)
+bartlett.test(data_disc_num)
+```
+
+*REGRESIÓN LOGÍSTICA*
+Por tanto, lo que se buscará en el siguiente análisis será realizar un modelo de regresión logística con dichos datos, utilizando como variable a explicar “cat2 consumo medio-alto, medio-bajo”, que es de tipo categórico. 
+ 
+A través de estos modelos podemos utilizar para los mismos variables cualitativas o categóricas como es el caso de nuestra variable, fragmentaremos el total de las informaciones en 80% que será la parte de entrenamiento, y un 20% lo de dedicaremos a la parte de testeo
+
+Recordemos que un modelo de clasificación es aquel capaz de predecir a qué clase va a pertenecer una nueva instancia, basándose en lo aprendido en instancias anteriores, por tanto, realizaremos una matriz de confusión para observar si se han clasificado bien las variables o no si existen falsos positivos o falsos negativos. Y finalmente para evaluar este modelo podríamos simplemente calcular su precisión (“accuracy”), como la proporción entre las predicciones correctas que ha hecho el modelo y el total de predicciones.
+
+```{r}
+set.seed(1234)
+
+datos_train_glm <- datos_train[,-11]
+
+regresion <- glm(cat2 ~ ., family = "binomial", data = datos_train_glm) 
+summary(regresion)
+
+stepAIC(regresion, direction = c("both"))
+
+regresion_buena <- glm(cat2 ~ DENSIDAD + LAB + REGTEN + IMPEXAC, family ="binomial", data = datos_train_glm)
+summary(regresion_buena)
+```
+Primeramente definimos nuestro modelo predictivo conn todas las variables, depués mediante el step tanto fordward como backward nos arroja un modelo con otras variables, comparandiolos con el criterio de Akaike el que nos aporta un numero menor de AIC, es el que hemos conseguido con el Step, tanto por el método forward como el bacward.
+
+
+```{r}
+datos_test_glm <- datos_test[,-11]
+prediccion <- predict(regresion_buena, datos_test_glm, type = 'response')
+```
+
+Con la predicción hecha, el siguiente paso requiere que se clasifique cada valor de la predicción en 0 o 1. Para ello se va a averiguar cual es el mejor "cutoff" y posteriormente se realizará la predicción.
+
+```{r, warning=FALSE}
+set.seed(1234)
+searchgrid = seq(0.01, 1, 0.01)
+result = cbind(searchgrid, NA)
+cost1 <- function(r, pi){
+  weight1 = 1
+  weight0 = 1
+  c1 = (r==1)&(pi<pcut) #logical vector - true if actual 1 but predict 0
+  c0 = (r==0)&(pi>pcut) #logical vector - true if actual 0 but predict 1
+  return(mean(weight1*c1+weight0*c0))
+}
+ 
+for(i in 1:length(searchgrid)) {
+  pcut <- result[i,1]
+  result[i,2] <- cv.glm(data = datos_train_glm, glmfit = regresion_buena, cost = cost1, K=5)$delta[2]
+}
+
+result[which.min(result[,2]),]
+```
+
+El resultado es un intervaloi de confianza en el que se encuentra nuesto cutt of óptimo. El cutoff óptimo se encontrará entre 0.48 y 0.129. Se va a comprobar cual es el mejor. Después se representa la matriz de confusión para ver la precisión del modelo.
+
+```{r}
+set.seed(1234)
+matConf_glm <- table(ifelse(prediccion >= 0.48, 1, 0), datos_test_glm$cat2)
+matConf_glm
+accuracy_glm <-sum(diag(matConf_glm))/sum(matConf_glm)
+accuracy_glm
+```
+
+Ahora se va a representar la curva ROC
+
+```{r}
+set.seed(1234)
+prediccion1 <- prediction(prediccion, datos_test$cat2)
+AUC <- performance(prediccion1, "auc")
+perf <- performance(prediccion1, "tpr", "fpr") 
+plot(perf, colorize = TRUE) # Establecemos el color. 
+abline(a = 0, b = 1) 
+text(0.4, 0.6, paste(AUC@y.name, "\n", round(unlist(AUC@y.values), 3)), cex = 0.7)
+```
+
+Con un cutoff de 0.48, se obtiene un accuracy de 0.88 lo cual significa que el modelo de regresión logística es muy bueno. Además, el resultado que arroja la curva ROC es de 0.93, que es un resultado muy aceptable. La conclusión que se extrae es que las variables que mejor predicen el consumo de carne de vacuno en las familias son los ingresos familiares, la situación laboral y si paga o no hipoteca o alquiler. Es evidente que a mayor poder adquisitivo, más asequible es consumir este tipo de producto.
+
+```{r}
+rm(regresion)
+rm(prediccion)
+```
+
+
+
+*ÁRBOLES DE DECISIÓN* 
+
+Un árbol de decisión es un mapa de los posibles resultados de una serie de decisiones relacionadas. Permite que un individuo o una organización comparen posibles acciones entre sí según sus costos, probabilidades y beneficios. Se pueden usar para dirigir un intercambio de ideas informal o trazar un algoritmo que anticipe matemáticamente la mejor opción.
+
+```{r}
+library(rpart)
+set.seed(1234)
+arbol <- rpart(cat2 ~ ., 
+               data=datos_train_glm, 
+               method="class",
+               parms=list(split="information"))
+
+arbol.pred1 <- predict(arbol, datos_test_glm, type="class")
+
+tabla.clasif.arbol1 <- table(datos_test_glm$cat2, arbol.pred1,
+                             dnn=c("Actual", "Predicted"))
+print(arbol)
+tabla.clasif.arbol1
+```
+
+Aquí se representa el accuracy del arbol sin podar. Más tarde lo podaremos para comprobar su estabilidad.
+
+```{r}
+tcc2 <- 100 * sum(diag(tabla.clasif.arbol1))/sum(tabla.clasif.arbol1)
+tcc2
+```
+
+Se observa que el accuracy del árbol es del 89.07%, lo cual es un accuracy buenísimo.
+
+Aquí se representa la importancia de las variables para la construcción del árbol y el gráfico del mismo.
+
+```{r}
+set.seed(1234)
+arbol$variable.importance
+
+rpart.plot(arbol, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación sin podar")
+```
+Cada uno de los cuadrados coloreados representa un nodo de nuestro ?rbol, con su regla de clasificaci?n correspondiente, Cada nodo est? coloreado de acuerdo a la categor?a mayoritaria entre los datos que agrupa. Esta es la categor?a que ha predicho el modelo para ese grupo. 
+Para los cortes de los nodos se ha llevado a cabo un criterio del par?metro de complejidad (CP), el cual, el par?metro de complejidad no es el error en ese nodo en particular. Es la cantidad por la cual la divisi?n de ese nodo mejor? el error relativo. El CP del siguiente nodo es solo 0.01 (que es el l?mite predeterminado para decidir cu?ndo considerar las divisiones) Nosotros para podar el arbol elegiremos uno superior.
+Ahora se va a representar la curva ROC.
+
+```{r}
+set.seed(1234)
+prediccion_arbol <- predict(arbol, datos_test, type="prob")[,2] 
+pred_arbol = prediction(prediccion_arbol, datos_test$cat2) 
+AUC <- performance(pred_arbol, "auc")
+perf1 <- performance(pred_arbol, "tpr", "fpr")
+plot(perf1, colorize = TRUE)
+abline(a = 0, b = 1)
+text(0.4, 0.6, paste(AUC@y.name, "\n", round(unlist(AUC@y.values), 5)), cex = 0.7)
+```
+
+El resultado de la curva ROC es del 90%, lo cual es un resultado muy bueno.
+Seguidamente se va a realizar la poda del árbol. Para ello se calculará el mejor CP (parámetro de complejidad relativo error mínimo) y posteriormente se podará. Se podrá comprobar si los resultados del árbol podado son mejores o peores que los del árbol sin podar.
+
+```{r}
+set.seed(1234)
+arbol$cptable[which.min(arbol$cptable[,"xerror"]),"CP"]
+printcp(arbol) 
+
+arbol_podado <- prune(arbol, cp = 0.22914)
+```
+
+Ahora se va a calcular, igual que para el árbol anterior, la predicción pertinente con su posterior precisión o accuracy.
+
+```{r}
+set.seed(1234)
+rpart.plot(arbol_podado, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación podado")
+
+arbol_prediccion <- predict(arbol_podado, datos_test_glm, type = "class")
+arbol_resultado_total <- table(datos_test_glm$cat2, arbol_prediccion,
+                                dnn = c("Actual", "Predicted"))
+
+tcc1 <- 100 * sum(diag(arbol_resultado_total))/sum(arbol_resultado_total)
+tcc1
+```
+
+El accuracy del árbol podado es del 87.74%, este resultado es muy bueno también; sin embargo, no alcanza el resultado del accuracy del árbol sin podar, así que se aceptará como mejor resultado el del árbol sin podar. A continuación, se representa la curva ROC de este árbol.
+
+```{r}
+set.seed(1234)
+prediccion_arbol2 <- predict(arbol_podado, datos_test, type="prob")[,2] 
+pred_arbol2 = prediction(prediccion_arbol2, datos_test$cat2) 
+AUC2 <- performance(pred_arbol2, "auc")
+perf2 <- performance(pred_arbol2, "tpr", "fpr")
+plot(perf2, colorize = TRUE)
+abline(a = 0, b = 1)
+text(0.4, 0.6, paste(AUC2@y.name, "\n", round(unlist(AUC2@y.values), 5)), cex = 0.7)
+```
+
+Como era de esperar, el resultado de esta curva ROC es del 88%, inferior al anterior, por lo que damos por mejor arbol, el que está sin podar.
+
+```{r}
+rm(prediccion_arbol)
+rm(prediccion_arbol2)
+rm(prediccion1)
+rm(prediccion)
+rm(arbol)
+rm(arbol_podado)
+rm(arbol_resultado_total)
+```
+
+# Modelo de Árboles para *Cat3*
+
+Seguiremos el mismo procedimiento que para *cat2*
+
+```{r}
+datos_train_arbol3 <- datos_train[,-10]
+datos_test_arbol3 <- datos_test[,-10]
+
+set.seed(1234)
+arbol3 <- rpart(cat3 ~ ., 
+               data=datos_train_arbol3, 
+               method="class",
+               parms=list(split="information"))
+
+arbol.pred3 <- predict(arbol3, datos_test_arbol3, type="class")
+
+tabla.clasif.arbol3 <- table(datos_test_arbol3$cat3, arbol.pred3,
+                             dnn=c("Actual", "Predicted"))
+print(arbol3)
+tabla.clasif.arbol3
+```
+
+```{r}
+tcc3 <- 100 * sum(diag(tabla.clasif.arbol3))/sum(tabla.clasif.arbol3)
+tcc3
+```
+
+Se observa que el accuracy del árbol es del 78.79%, lo cual es un accuracy razonablemente bueno, pero inferior a lo esperado.
+
+Aquí se representa la importancia de las variables para la construcción del árbol y el gráfico del mismo.
+
+```{r}
+arbol3$variable.importance
+
+rpart.plot(arbol3, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación sin podar")
+
+```
+
+
+```{r}
+library(caret)
+arbol.pred_2 <- predict(arbol3, datos_test_arbol3, type="class")
+
+tabla.clasif.arbol2 <- table(datos_test_arbol3$cat3, arbol.pred_2,
+                             dnn=c("Actual", "Predicted"))
+
+confusionMatrix(as.factor(arbol.pred_2),datos_test_arbol3$cat3)
+
+tcc3 <- 100 * sum(diag(tabla.clasif.arbol2))/sum(tabla.clasif.arbol2)
+tcc3
+```
+
+
+La curva ROC no se puede realizar ya que solo permite clasificaciones binarias y no estamos antes una variable de tal tipo.
+
+Seguidamente se realizará la poda como se ha hecho anteriormente, eligiendo para ello el parámetro de complejidad correcto. Comprobaremos si los resultados obtenidos son mejores o peores que con el árbol original.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+opt <- which.min(arbol3$cptable[,"xerror"])
+cp <- arbol3$cptable[opt, "CP"]
+arbol_podado_2 <- prune(arbol3, cp = cp)
+
+arbol_podado_2 <- prune(arbol3, cp = 0.10000)
+
+rpart.plot(arbol_podado_2, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación podado")
+
+```
+Comprobamos nuevamente con los datos de test la precisión del modelo de árbol ded clasificación para Categoria3.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+arbol_prediccion <- predict(arbol_podado_2, datos_test_arbol3, type = "class")
+arbol_resultado_total <- table(datos_test_arbol3$cat3, arbol_prediccion,
+                               dnn = c("Actual", "Predicted"))
+
+arbol_resultado_total
+
+acc_pod_2 <- 100 * sum(diag(arbol_resultado_total))/sum(arbol_resultado_total)
+acc_pod_2
+```
+

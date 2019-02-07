@@ -1,0 +1,140 @@
+---
+title: "Informe Examen clasificación"
+Author: 'Álvaro Ferro Pérez'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# **Executive Summary**
+
+El objetivo del siguiente informe es presentar y comparar un análisis de regresión y un árbol de clasificación sobre un conjunto de datos extraido de la *Encuesta de Presupuestos Familiares* del año 2017 elaborada por el Instituto Nacional de Estadística, excepto las variables cat2 y cat3 que han sido extraídas e incorporadas al dataset de manera independiente.
+
+Las variables *cat2* y *cat3* explican el nivel de consumo anual de carne de vacuno de los hogares españoles. Además contamos con las siguientes variables:
+
+| VARIABLES | DEFINICIÓN                                                                       |
+|-----------|----------------------------------------------------------------------------------|
+| TAMAMU    | Tamaño de los municipios                                                         |
+| DENSIDAD  | Densidad de la población                                                         |
+| EDAD      | Edad, expresada en años                                                          |
+| SEXO      | Sexo de la muestra                                                               |
+| ESTUD     | Nivel de estudios completados                                                    |
+| LAB       | Situación laboral                                                                |
+| REGTEN    | Regimen de tenencia de la vivienda                                               |
+| SUPERF    | Superficie de la vivienda en metros cuadrados                                    |
+| IMPEXAC   | Importe exacto de los ingresos mensuales netos totales del hogar en cientos de € |
+
+Todas estas variables van a ser tratadas y renombradas para que su estudio, aplicación y comprensión sea más sencilla en los posteriores análisis que realicemos. Por su parte, los ingresos van a ser multiplicados por 100 para tener una escala más comprensible.
+
+# **Análisis exploratorio**
+
+El objetivo del análisis exploratorio será limpiar el conjunto de datos de manera que la aplicación de la regresión logística y los árboles de clasificación se haga de manera correcta y sin errores.
+
+Comenzamos eliminando los valores perdidos *(NA)* ya que solo nos quita unas cuantas observaciones y no influyen en el resultado global. Debido a que la variable que contiene estos valores es la *Superficie*, sería un error imputar la media o mediana de grupo ya que los datos se alterarían. Nos quedamos con un total de 4052 observaciones con las realizaremos los análisis de las 4220 originales que incluía el dataset.
+
+Los niveles de las variables factor se han reclasificado siguiendo el esquema provisto en la hoja de excel donde por ejemplo la situación laboral eran valores entre 0 y 4 se ha incluído su verdadero valor:
+
+- Ocupado a jornada completa
+- Ocupado a jornada parcial
+- Parado
+- Jubilado/otros
+
+Se ha realizado lo mismo para las demás variables y se han representado todas y cada una de ellas en función de Categoría3, para ver como influyen cada una de manera independiente, como conclusiones gráficas hemos extraido:
+
+- El consumo de carne tiene bastante relación con la edad, ya que al incrementar esta se incrementa el consumo, habiendo un pico bastante destacado en el rango de +80 años.
+- En cuanto a superficie e ingresos se distribuye de forma irregular, no encontrando ninguna particularidad en relación a dichas variables.
+- En cuanto a la variable categórica *tamaño de municipio* está bastante desbalanceada siendo aquellos de +10000 habitantes donde se aglomera la mayor proporción. Al igual pasa con densidad de zona, lo cual tiene sentido ya que densidad implica acumulación de personas y por ende mayor consumo. 
+- El sexo está mejor distribuido que las anteriores, aunque con una pequeña ventaja para las mujeres.
+- En relación a los estudios el único punto más bajo se encuentra en la segunda etapa de la educación secundaria.
+- La situación laboral sí que influye de manera notoria en el consumo. Tiene sentido pensar que aquella persona cuya situación laboral sea peor que otra tenderá a tener una dieta más austera evitando/consumiendo menos de este producto que en general es caro.
+- En el tipo de vivienda también observamos diferencias siendo mayor el consumo en gente con un hogar estable y menos en el caso de ser alquilados o hipotecados. En este último caso vemos que el consumo medio-bajo es prácticamente inexistente, siendo lo normal un consumo muy bajo o bajo.
+
+Aunque a priori parece que está demostrada la no normalidad de las variables, se va a realizar el test de Saphiro para corroborarlo.
+Evidentemente se confirma la no normalidad de todas las variables numéricas.
+H0: Es normal, H1: No es normal. Por tanto buscaremos rechazar la hipótesis nula, queremos que nuestros datos no sean normales.
+
+Como se observa el p-valor alcanzado para los tres tipos de consumo de carne es muy bajo, rozando el cero, por lo tanto se rechaza la hipótesis.
+
+Además y para concluir el análisis explotorio realizaremos el test de Bartlett. En estadística, la prueba de Bartlett se utiliza para probar si k muestras provienen de poblaciones con la misma varianza. A las varianzas iguales a través de las muestras se llama homocedasticidad u homogeneidad de varianzas, es sensible a las desviaciones de la normalidad.
+H0 significaría que todas las varianzas de una población k son iguales.
+
+Otra premisa necesaria para estos análisis es que las variables numéricas no deben de estar muy correlacionadas entre todas debido a que ello incurre en un problema de multicolienalidad, pero analizando la matriz de correlaciones se observa que no es asi.
+
+Por último cabe deducir que todas as variables de este modelo tienen un parámetro estimado que no es cero, con un alto nivel de confianza del 95%.
+
+# **Modelo de regresión logística**
+
+En este apartado buscaremos realizar un análisis de regresión logística con las variables anterior descritas y exploradas. Para ellos vamos a hacer uso de la variable *cat2* la cual indica un consumo bajo o consumo no bajo de carne.
+
+A través de este modelo se pueden usar tanto variables categóricas como cuantitativas Se dividirá la información que tenemos en *train* y *test* usando unos porcentajes de 80 y 20 respectivamente
+
+Recordemos que un modelo de clasificación es aquel capaz de predecir a qué clase va a pertenecer una nueva instancia, basándose en lo aprendido en instancias anteriores, por tanto, realizaremos una matriz de confusión para observar si se han clasificado bien las variables o no si existen falsos positivos o falsos negativos. Y finalmente para evaluar este modelo podríamos simplemente calcular su precisión (“accuracy”), como la proporción entre las predicciones correctas que ha hecho el modelo y el total de predicciones.
+
+En esta parte se va a predecir la variable cat2 por lo que deberemos eliminar la variable cat3 ya que ambas contienen la misma información.
+
+Se define un modelo de regresión inicial que contiene todas las variables para tener una primera aproximación sobre lo que queremos realizar. Más tarde mediante la función stepAIC con el método *both* conseguiremos un modelo de regresión que cumpla el criterio de menor AIC que será con el que finalmente nos quedemos.
+
+Una vez realizado el modelo y la posterior predicción habrá que definir un cut-off o punto de corte a partir de cual nuestras predicciones pasarán a ser 0 o 1.
+
+Se emplea un algoritmo matemático para ajustar el cut-off dentro de un rango, en este caso 0.127 y 0.48 y se prueban diferentes cortes. Usando el corte en 0.48 se obtiene un accuracy del 86% lo cual es muy buen resultado.
+
+El último paso sería la elaboración de la curva ROC (que es una representación gráfica de la sensibilidad frente a la especificidad de un sistema clasificador binario) con la cual obtenemos un valor de 0.93
+
+Como conclusión, la capacidad predictiva de este modelo es muy buena. Los resultados obtenidos tanto en la matriz de confusión como en la curva ROC, con unos cortes para train y test del 80% y 20% demuestran que, nuevas observaciones que puedan ser incorporadas serán clasificadas con un error mínimo.
+
+# **Árboles de Clasificación**
+
+El objetivo de los árboles será compararlos con el modelo de regresión previamente realizado para la variable *cat2*, además de realizar otro para nuestra variable *cat3*, en este caso no binaria.
+
+Un árbol de decisión es un mapa de los posibles resultados de una serie de decisiones relacionadas. Permite que un individuo o una organización comparen posibles acciones entre sí según sus costos, probabilidades y beneficios. Se pueden usar para dirigir un intercambio de ideas informal o trazar un algoritmo que anticipe matemáticamente la mejor opción.
+
+Se realizará un primer árbol sin podar para estimar la capacidad predictiva del modelo. Obtenemos un accuracy del 88% lo cual es muy elevado para un árbol que aún no está podado. 
+
+Lo siguiente será realizar el gráfico de este árbol para poder visualizar mejor los datos y las clasificaciones realizadas. Cada uno de los cuadrados coloreados representa un nodo de nuestro árbol, con su regla de clasificación correspondiente, Cada nodo está coloreado de acuerdo a la categoría mayoritaria entre los datos que agrupa. Esta es la categoría que ha predicho el modelo para ese grupo.
+
+El resultado de la curva ROC para el modelo sin podar es del 0.89, resultado muy aceptable. Seguidamente se va a realizar la poda del árbol. Para ello se calculará el mejor CP (parámetro de complejidad relativo error mínimo) y posteriormente se podará. Se podrá comprobar si los resultados del árbol podado son mejores o peores que los del árbol sin podar.
+
+El accuracy para el árbol podado con un CP del 0.22914 es del 87.74%, un 2% más bajo que el árbol inicial, concluyendo que la poda ha empeorado los resultados y por lo tanto no es necesaria ya que no hay overfitting.
+
+
+## Regresión Logística VS Árboles de clasificación para *Cat2*
+
+El accuracy del modelo de árbol de clasificación es ligeramente superior a la precisión obtenida por la regresión logística, sin embargo, el área bajo la curva (Este índice se puede interpretar como la probabilidad de que un clasificador ordenará o puntuará una instancia positiva elegida aleatoriamente más alta que una negativa) es mayor en el modelo logístico.
+
+Seleccionaríamos el modelo logístico ya que el AUC o área bajo la curva es un indicador más general que la precisión y no depende de un hiperparámetro como este último.
+
+|     Cat2  | Regresión Logistica |  Arbol de Decisión        |
+|-----------|---------------------|---------------------------|
+| Curva ROC | 93%                 | 89%                       | 
+| Accuracy  | 86%                 | 88%                       |
+
+## Árboles de clasificación para *Cat3*
+
+Seguidamente se nos ha pedido realizar un modelo de árboles para la variable *cat3* y para ello seguiremos el mismo procedimiento anteriormente realizado. El problema viene cuando queremos reprensentar la Curva ROC ya que no es posible si estamos ante variables no binarias. 
+
+El primer nodo y por tanto la variable principal a partir de la cuál se van a hacer la segmentación es el régimen de tenencia seguida en segundo lugar por el importe exacto de los ingresos mensuales netos totales del hogar.
+
+La precisión lograda por el árbol de clasificación es del 78.79%. Es una accuracy menor que los obtenidos anteriormente. Sin embargo, dado que estamos clasificando tres variables en esta ocasión, el resultado es destacable, ya que una clasificación aleatoria en este caso, a diferencia de los anteriores, hubiese conseguido únicamente una precisión del 33%.
+
+La poda, como en el caso anterior, nos arroja resultados peores, en este caso una accuracy del 69.90%
+
+Cabe destacar que el uso de árboles para variables no binarias no es aconsejable. La prueba usando una clasificación multivariante ha reducido el accuracy al igual que el área debajo de la curva. En general se ha perdido capacidad predictiva y clasificadora puesto que estos algoritmos están diseñados para ser usados bajo clasificaciones binarias.
+
+
+# Conclusiones generales
+
+Hemos realizado el análisis de regresión logística y el árbol de decisión de para la variable *cat2* y hemos procedido a comparar tanto los resultados del accuracy como los de la Curva Roc.
+
+Para el modelo de regresión logística obtuvimos un accuracy del 86% mientras que el área por debajo de la curva ascendía al 93%. Para el caso del árbol de decisión de esta variable ocurría lo mismo, los resultados fueron del 88% y el 89% para el accuracy y curva ROC respectivamente.
+
+Finalmente nos hemos quedado con el modelo logístico ya que el Área Bajo la Curva (AUC) es un indicador más general que la precisión y no depende de un hiperparámetro como este último.
+
+En cuanto a la variable *cat3* de la cual también se nos pedía la construcción de un árbol, hemos seguido el mismo procedimiento pero teniendo en cuenta que esta era no binaria. La precisión obtenida ha sido, como es lógico menor, ascendiendo a un 78.20%. Hay que tener cuidado ya que estamos tratando en este caso con una variable no binaria cuya *prior probability* es de un 33% aproximadamente al  ser 3 las categorías en las que está dividida la variable.
+
+El árbol de clasificación que hemos obtenido para *cat2* tiene errores en los consumos de tipo bajo, ya que los clasifica como no bajos mientras que el árbol para *cat3* tiene un mayor numero de errores para el consumo bajo-medio.
+
+En el caso del modelo de regresión logística, tiene los errores mejor repartidos entre falsos positivos y falsos negativos.
+
+Aunque este ultimo modelo presente ventajas, la elección final del modelo dependerá de los objetivos finales de la clasificación.

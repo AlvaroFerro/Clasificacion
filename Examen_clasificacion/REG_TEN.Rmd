@@ -1,0 +1,594 @@
+---
+title: "Examen Clasificacion febrero 19"
+author: "Alvaro Ferro Pérez"
+date: "05/02/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+**Objetivo**: El presente informe emplea los datos de la Encuesta de Presupuestos Familiares 2017 y corresponde a hogares single (solteros),con la finalidad de explicar el riesgo que tienen los hogares de incurrir en pobreza a partir de la determinación de las variables explicativas; en este sentido se propone la estimación de un modelo explicativo por medio de tres modelos. En primer lugar, la regresión logística; en segundo lugar, el análisis discriminante y en tercer y último lugar, a través de los árboles de clasificación, para finalmente realizar una comparación entre ellos estableciendo una jerarquía según la cual veremos qué modelo es el que realiza una mejor clasificación. Dicha comparación la realizaré calculando para los 3 modelos la matrices de confusión respectivas, la precisión del modelo y el área bajo la curva calculada mediante el análisis ROC.
+
+##INTRODUCCIÓN
+
+La encuesta de Presupuestos familiares (EPF) la realiza cada año en Instituto Nacional de Estadística (INE),siendo su objetivo en disponer de estadísticas comparativas con el ánimo de conocer el gasto en consumo de los hogares residentes en España, así como la distribución del mismo entre las diferentes parcelas de consumo, sustituyendo a la Encuesta Contínua de Presupuestos Familiares (ECPF) que estuvo en vigor desde el año 1997 al 2005 incorporando diversas mejoras metodológicas , tales como el cambio de periodicidad (de trimestral a anual), así como el aumento del tamaño de la muestra.
+
+La EPF ofrece la información imprescindible para las estimaciones sobre el gasto en consumo de los hogares de la Contabilidad Nacional y para la actualización de ponderaciones del Índice de Precios al Consumo (IPC).
+
+Los gastos de consumo que se registran en la EPF se refieren tanto al flujo monetario que destina el hogar, en este caso, single, al pago de determinados bienes y servicios de consumo final asi como al valor de determinados consumos no monetarios efectuados por los hogares. Estos últimos son por ejemplo nuestra variable 'REGTEN'la cual tomará valor *0* en caso de alquiler imputado/pago de hipoteca.
+
+Las variables objeto de estudio son las siguientes:
+
+:Tabla de las variables objeto de estudio
+
+
+| VARIABLES | DEFINICIÓN                                                                       |
+|-----------|----------------------------------------------------------------------------------|
+| cat2      | Variable de clasificación de hogares según su gasto en consumo de vacuno anual   |
+| cat3      | Variable de clasificación de hogares según su gasto en consumo de vacuno anual   |
+| TAMAMU    | Tamaño de los municipios                                                         |
+| DENSIDAD  | Densidad de la población                                                         |
+| EDAD      | Edad, expresada en años                                                          |
+| SEXO      | Sexo de la muestra                                                               |
+| ESTUD     | Nivel de estudios completados                                                    |
+| LAB       | Situación laboral                                                                |
+| REGTEN    | Regimen de tenencia de la vivienda                                               |
+| SUPERF    | Superficie de la vivienda en metros cuadrados                                    |
+| IMPEXAC   | Importe exacto de los ingresos mensuales netos totales del hogar en cientos de € |
+
+
+Cabe destacar que la obtención de los datos se realiza a partir del muestreo de la población, en donde se aplica una muestra de 4220 hogares solteros distribuidas por todo el territorio nacional.Para comenzar, se plantea el análisis exploratorio de los datos con la finalidad de identificar las variables explicativas relacionadas con la variable dependiente. 
+
+
+##ANÁLISIS EXPLORATORIO DE DATOS
+
+Realizamos el análisis eploratorio con el objetivo de identifica las variables explicativas con la variable dependiente.
+
+De las 11 variables observamos que la variable SUPERF tiene 168 valores perdidos, representando casi un 4% sobre el total de las observaciones para esa variable. Lo mejor sería reemplazar todos los valores perdidos por su mediana, puesto que considero que es la forma más representativa de reemplzar los NA´s y no aumentemos la dispersión.
+
+Nos creamos una semilla 123, para que cada vez que se carguen los datos, estos no den diferentes resultados cada vez y clasificamos el conjunto de las 4220 observaciones en dos subconjuntos que serán por una parte, los datos_train los cuales albergarán el 70% del total de observaciones y datos_test el resto.
+
+Pasaremos a factor las variables que nos interesen y dejaremos como están las variables SUPERF ni EDAD, puesto que no tendría mucho sentido convertirlas a factor. Por otra parte, la variable EDAD la pasaremos como numérica.
+
+```{r}
+
+library(readxl)
+
+datos<- read_xlsx('BDexamen1.xlsx', sheet='bd', col_names = TRUE)
+# Exploration variables
+str(datos)
+summary(datos)
+
+# Explore NA values
+ExploreNA <- function(datos) {
+  TrueNA <- is.na.data.frame(datos)
+  SumNA <- colSums(TrueNA)
+  PorcentNA <- colSums(TrueNA) / nrow(datos)*100
+  VariableNA <- data.frame(SumNA, PorcentNA)
+  
+  return(VariableNA)
+} 
+ExploreNA(datos)
+
+f=function(x){
+  x<-as.numeric(as.character(x)) #first convert each column into numeric if it is from factor
+  x[is.na(x)] =median(x, na.rm=TRUE) #convert the item with NA to median value from the column
+  x #display the column
+}
+datos=data.frame(apply(datos,2,f))
+summary(datos)
+
+
+
+
+# Create dummy variables (function)
+library(dplyr)
+library(tidyr)
+
+#Conversión a factor de las variables que nos interesen
+
+#Para nuestra variable dependiente
+datos$REGTEN <- as.factor(datos$REGTEN)
+
+#Para el resto de las variables
+datos$TAMAMU <- as.factor(datos$TAMAMU)
+datos$DENSIDAD <- as.factor(datos$DENSIDAD)
+datos$SEXO <- as.factor(datos$SEXO)
+datos$ESTUD <- as.factor(datos$ESTUD)
+datos$LAB <- as.factor(datos$LAB)
+datos$cat2 <- as.factor(datos$cat2)
+datos$cat3 <- as.factor(datos$cat3)
+
+datos$EDAD<- as.numeric(datos$EDAD)
+
+#No factorizarmos las variables EDAD, SUPERF, y IMPEXAC
+
+str(datos)
+
+# Divide train and test sample
+set.seed(123)
+train <- sample(nrow(datos), 0.7*nrow(datos))
+datos_train <- datos[train,]
+datos_test <- datos[-train,]
+
+```
+
+```{r}
+summary(datos)
+str(datos)
+```
+
+Vamos a ver cómo están de balanceados nuestros datos para la variable dependiente, tanto en la muestra con que trabajaremos denominada datos_train como en el test. Observamos que ambas están balanceadas, existiendo una proporcion superior de personas en régimen de tenencia de la propiedad en la muestra tainning frente a la muestra test.
+
+```{r}
+# Exploratory Analysis (dependient variable)
+table(datos_train$REGTEN)
+plot(as.factor(datos$REGTEN))
+
+
+par(mfrow = c(1,2)) 
+plot(as.factor(datos_train$REGTEN), main = "Muestra de training") 
+plot(as.factor(datos_test$REGTEN), main = "Muestra de test")
+```
+
+##REGRESION LOGÍSTICA 
+
+Dado que la variable que define el régimen de tenencia es un indicador dicotómico,indicando 0 si el individuo está en régimen de alquiler o pagando la hipoteca, y por otra parte, tomando el valor 1 si el individuo tiene propiedad sin hipoteca.
+
+```{r}
+regresion <- glm(REGTEN ~ ., family = "binomial", data = datos_train) 
+summary(regresion)
+```
+
+De cara a realizar la mejor regresión logística que nos ayude a predecir y estimar la variable dependiente deberemos de escoger aquel modelo que arroje menos AIC o BIC, por ser el más preciso de todos ellos. El modelo calculado tiene un AIC de 1367 y señala que DENSIDAD3,EDAD,ESTUD3,ESTUD4,LAB2,LAB3,LAB4,SUPERF,IMPEXAC,cat21,cat32 y cat33 son las estadísticamente más significativas, por lo que realizamos la regresión logística ahora con esta
+
+```{r}
+regresion_buena<- glm(REGTEN ~ DENSIDAD+EDAD+ESTUD+LAB++SUPERF+IMPEXAC+cat2+cat3, family = "binomial", data = datos_train)
+summary(regresion_buena) 
+```
+Conseguimos reducir el AIC hasta en un 1366 y a través del odds-ratio podemos ver los coeficientes de las variables explicativas que explican el porcentaje de contribución a la variable dependiente, siendo el coeficiente de la situación laboral3 (LAB3) la que más información aporta, la cual es parado. Esto tiene sentido ya que una persona en régimen laboral de desempleo tiene menos probabilidad de poder comprarse una casa en propiedad al tener menor poder adquisitivo.
+
+```{r}
+library(MASS)
+stepAIC(regresion, regresion_buena)
+```
+
+```{r}
+exp(coef(regresion_buena))
+```
+
+El modelo presenta un R2 McFadden de 0.6409 la cual debe tender a 1; por lo cual este valor se considera aceptable. Cuanto mas se acerque a 1 más ajustado será el modelo.
+
+```{r}
+library(pscl)
+pR2(regresion_buena)
+```
+
+Para poder calcular la matriz de confusión tendremos que determinar el óptimo cut-off
+
+```{r}
+library(ROCR)
+prob <- predict(regresion_buena, datos_test, type = "response")
+prediccion <- prediction(prob, datos_test$REGTEN)
+eval <- performance(prediccion, "acc")
+plot(eval)
+```
+
+```{r}
+max <- which.max(slot(eval, "y.values")[[1]])
+acc <- slot(eval, "y.values")[[1]][max]
+cutoff <- slot(eval, "x.values")[[1]][max]
+print(c(Accuracy = acc, Cutoff = cutoff))
+```
+
+
+Con una precisión para nuestro modelo de un 90,60% obtenemos el mejor cut-off de un 0.5280062
+
+```{r}
+logit_pred <- factor(prob > 0.5280062, levels = c(FALSE, TRUE), labels = c("En propiedad", "En alquiler"))
+```
+
+Creamos nuestra matriz de confusión, en donde relacionamos los valores actuales con las observaciones predichas
+
+```{r}
+confution_table <- table(datos_test$REGTEN, logit_pred, dnn = c("Actual", "Predicted"))
+confution_table
+```
+
+
+Al analizar los resultados arrojados por la matriz de confusión se destaca que el modelo coloca como falsos positivos a 55 individuos, es decir, predice que estas personas estarán en el régimen de tenecia en propiedad de la vivienda cuando en realidad están en régimen de alquiler, y por otra parte el modelo coloca como falsos negativos (también conocido como error de tipo II) una cantidad de 65 individuos, con la misma interpretación que la anterior pero en sentido contrario.
+
+Vamos a representar la curva ROC que relaciona la proporción de los falsos positivos con los verdaderos positivos
+
+```{r}
+ prediccion1 <- prediction(prob, datos_test$REGTEN)
+ AUC <- performance(prediccion1, "auc")
+ perf <- performance(prediccion1, "tpr", "fpr") 
+ plot(perf, colorize = TRUE) # Establecemos el color. 
+ abline(a = 0, b = 1) 
+ text(0.4, 0.6, paste(AUC@y.name, "\n", round(unlist(AUC@y.values), 3)), cex = 0.7)
+```
+
+El área pode debajo de la curva ROC es de 0.964.Sabiendo que el AUC toma valores comprendidos entre 0 y 1, vemos que a través del modelo de regresión logística el rendimiento en cuanto a clasificación es bastante notable.
+
+**CONCLUSIONES ARROJADAS A TRAVÉS DE LA REGRESIÓN LOGÍSTICA**
+
+: Matriz de confusión de la regresión logística
+
+|        | Predecido    |             |   |
+|--------|--------------|-------------|---|
+| Actual | En propiedad | En alquiler |   |
+| 0      | 349          | 65          |   |
+| 1      | 55           | 797         |   |
+
+: Precisión de nuestro modelo y AUC con la curva ROC
+
+|           | Regresión Logística |
+|-----------|---------------------|
+| Curva ROC | 0.964               |
+| Accuracy  | 0.907               |
+
+
+
+##ANÁLISIS DISCRIMINANTE
+
+Las técnicas de análisis discrimiante tienen por objetivo la determinanción de un criterio que nos permita decidir a qué grupo pertence un cierto individuo, a partir de la información disponible.
+
+Nuestras variables numéricas son EDAD, SUPERF e IMPEXAC,y vemos si se comportan como una distribución normal. Vemos que no todas las variables soportan la asunción de normalidad, requerida por el LDA, de forma que puede ser que haya problemas con el empleo del LDA o incluso del QDA; en todo caso veamos qué ocurre si tratamos de predecir la clasificación empleando las funciones discriminantes.
+
+```{r}
+ library(tidyverse)
+ str(datos)
+ datos_analisis<- datos_train[,c(-1,-2,-4,-5,-6,-10,-11)]
+ datos_analisis_test<- datos_test[,c(-1,-2,-4,-5,-6,-10,-11)]
+ str(datos_analisis_test)
+ str(datos_analisis)
+```
+
+```{r}
+library(tidyverse)
+ggplot(data = datos_train, mapping = aes(x =EDAD )) +
+  geom_bar(mapping = aes(fill = REGTEN))
+
+ggplot(data = datos_train, mapping = aes(x =ESTUD )) +
+  geom_bar(mapping = aes(fill = REGTEN))
+
+ggplot(data = datos_train, mapping = aes(x = cat3)) +
+  geom_bar(mapping = aes(fill = REGTEN))
+
+ggplot(data = datos_train, mapping = aes(x =SEXO )) +
+  geom_bar(mapping = aes(fill = REGTEN))
+
+ggplot(data = datos_train, mapping = aes(x =LAB )) +
+  geom_bar(mapping = aes(fill = REGTEN))
+
+```
+
+Conclusiones en base a los gráficos:
+
+- A medida que la edad de los individuos aumenta el régimen de tenencia en propiedades es mucho mayor. Sin embargo, para aquellos individuos inferiores a los 50 años están en régimen de alquiler.
+- Los individuos de los hogares que han recibido una educación inferior están en régimen de tenencia de alquiler mucho más significativa. Esto puede deberse a que aquellos que tengan una educación maás cualificada son aquellas personas con mayor movilidad geográfica por razones laborales y prefieren estar en alquiler.
+- Aquellas personas que consumen más carne vacuna son aquellas que están en régimen de tenencia en propiedad.
+- Existe una mayor proporción de mujeres que están en régimen de propiedad frente a los hombres.
+- Aquellas personas que tienen un nivel de estudios superiores son aquellos individuos que tienen un mayor porcentaje de régimen de tenencia en propiedad.
+
+
+Nos cargamos las siguientes librerías
+
+```{r}
+require(Hmisc)
+ library(factoextra)
+ library(FactoMineR)
+ library(corrplot)
+ library(car)
+ library(biotools)
+library(gmodels)
+```
+
+```{r}
+scatterplotMatrix(datos_analisis)
+scatterplot3d::scatterplot3d(datos_analisis)
+```
+
+Realizamos el testde heterocedasticidad, en donde rechazamos la hipótesis nula y aceptamos la alternativa, podemos concluir que para las variables objeto de estudio existe heterocedasticidad, dando por ello evidencia que la varianza no es constante para las variables numéricas
+
+```{r}
+boxM(data = datos_analisis[, c(1,3,4)], datos_analisis[,2])
+str(datos_analisis)
+```
+
+Realizamos seguidamente un diagrama de dispersión por tenencia de propiedad
+
+```{r}
+pairs(datos_analisis, main = "Dispersión según régimen de tenencia",
+      pch = 21, bg = c("red", "black", "brown")[unclass(datos_analisis$REGTEN)])
+```
+Vamos a realizar el análisis discriminante empleando el LDA. A través del LDA, podemos dividir el espacio muestral en varios subgrupos mediante hiperplanos que permiten separar lo mejor posible los grupos objeto de estudio.
+
+```{r}
+set.seed(123)
+ADL <- lda(REGTEN~ ., data = datos_analisis)            
+ADL
+```
+
+Visualizamos el LDA en dos grupos para poder ver el régimen de tenencia.Según el gráfico de partición los grupos están bastante diferenciados, lo cual nos ayuda para poder clasificarlos. El objetivo esencial es utilizar los valores independientes para predecir en qué categoría de la variable dependiente corresponde. Es decir, asignar nuevos individuos al grupo que mejor corresponde a una clasificación ya establecida, construida a partir de los dos grupos establecidos.
+
+```{r}
+plot(ADL, 
+     panel = function(x, y, ...) {
+       points(x, y, ...)
+       text(x , y ,labels = datos_analisis$REGTEN) 
+     }
+     ,
+     col = as.integer(datos_analisis$REGTEN), pch = 20)
+```
+A continuación representamos nuestra matriz de confusión, en donde nuestra precisión para el modelo es de 89.73144
+
+```{r}
+model = lda(REGTEN ~ ., datos_train) 
+model
+prediccionlda <- predict(model, datos_test, type = "response")
+tabla.clasiflda <- table(datos_test$REGTEN, prediccionlda$class,dnn = c("Actual", "Predicted")) 
+tabla.clasiflda
+100 * sum(diag(tabla.clasiflda)/sum(tabla.clasiflda))
+```
+
+Seguidamente representaremos la curva ROC, en donde el área por debajo de la cuva es 0.96
+
+```{r}
+prediccion2 <- prediction(prediccionlda$posterior[,2], datos_test$REGTEN)
+AUC2 <- performance(prediccion2, "auc") 
+perf2 <- performance(prediccion2, "tpr", "fpr") 
+plot(perf2, colorize = TRUE) # Establecemos el color.
+abline(a = 0, b = 1) 
+text(0.4, 0.6, paste(AUC2@y.name, "\n", round(unlist(AUC2@y.values), 3)), cex = 0.7)
+```
+Realizamos la misma operación para el QDA y veremos cual es su matriz de confusión y su precisión.
+LDA tiende a conseguir mejores clasificaciones que QDA cuando hay pocas observaciones con las que entrenar el modelo. Por el contrario, cuando trabajamos con una gran cantidad de observaciones de entrenamiento o si no es asumible que exista una matriz de covarianza común entre clases, QDA es más adecuado.
+
+```{r}
+model1 = qda(REGTEN~., datos_analisis)
+model1
+prediccionqda <- predict(model1, datos_analisis_test, type = "response")
+
+tabla.clasifqda <- table(datos_analisis_test$REGTEN, prediccionqda$class) 
+tabla.clasifqda
+100 * sum(diag(tabla.clasifqda)/sum(tabla.clasifqda))
+```
+
+Nuestra precisión resulta mucho peor para el análisis QDA. Representaremos la curva ROC, siendo el AUC de 0.808
+
+```{r}
+prediccion22 <- prediction(prediccionqda$posterior[,2], datos_analisis_test$REGTEN)
+AUC22 <- performance(prediccion22, "auc") 
+perf22 <- performance(prediccion22, "tpr", "fpr") 
+plot(perf22, colorize = TRUE) # Establecemos el color.
+abline(a = 0, b = 1) 
+text(0.4, 0.6, paste(AUC22@y.name, "\n", round(unlist(AUC22@y.values), 3)), cex = 0.7)
+```
+
+**CONCLUSIONES ARROJADAS A TRÁVES DEL ANÁLISIS DISCRIMINANTE**
+
+ :Matriz de confusión según el analisis LDA
+
+|        | Predecido    |             |   |
+|--------|--------------|-------------|---|
+| Actual | En propiedad | En alquiler |   |
+| 0      | 345          | 69          |   |
+| 1      | 61           | 791         |   |
+
+
+: Matriz de confusión según el QDA
+
+|        | Predecido    |             |   |
+|--------|--------------|-------------|---|
+| Actual | En propiedad | En alquiler |   |
+| 0      | 247          | 167         |   |
+| 1      | 124          | 728         |   |
+
+
+: Precisión de nuestro modelo y ROC para LDA
+
+|           | Análi discriminante |
+|-----------|---------------------|
+| Curva ROC | 0.96                |
+| Accuracy  | 89.73               |
+
+: Precisión de nuestro modelo y ROC para QDA
+
+|           | Análi discriminante |
+|-----------|---------------------|
+| Curva ROC | 0.808               |
+| Accuracy  | 77.01422            |
+
+
+##ÁRBOLES DE CLASIFICACIÓN
+
+El modelo de árbol de decisión tiene como base dos instancias para su ejecución: la primera hace refencia al los árboles tradicionales y el segundo a los árboles podados.
+
+*Árbol tradicional:*
+
+Para su realización, se fundamenta en la elección de un modelo que busca el error de clasificación mínimo asociado a una determinada magnitud de la complejidad del árbol (parámetro de complejidad), una vez desarrollado el número máximo de nodos posibles. 
+
+Dichos indicadores que nos llevan a reflexionar que los determinantes en la pobreza de un hogar principalemente se asocian al aspecto laboral.
+
+Con la finalidad de reducir el error de clasificación se realiza el podado del árbol de clasificación. Para este modelo el error relativo mínimo fue de 0.65000; sin embargo dado que la suma del error relativo y su desviación estándar (0.65000 + 0.064404 = 0.714404) fue mayor al error relativo que las antecede (0.67500), se opta por emplear dicho error asociado a una criterio de complejidad 0.083333; lo cual conlleva que el númeto total de divisiones sea de una división.
+
+```{r}
+library(rpart)
+
+set.seed(123)
+arbol <- rpart(REGTEN ~ ., 
+               data=datos_train, 
+               method="class",
+               parms=list(split="information"))
+print(arbol)
+```
+```{r}
+library(rpart.plot)
+rpart.plot(arbol, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación por régimen de tenencia")
+
+```
+
+
+La matriz de confusión del árbol tradicional sin podar arroja una precisión del 89.09
+
+```{r}
+arbol.pred1 <- predict(arbol, datos_test, type="class")
+
+tabla.clasif.arbol1 <- table(datos_test$REGTEN, arbol.pred1,
+                             dnn=c("Actual", "Predicted"))
+
+tabla.clasif.arbol1
+
+tcc2 <- 100 * sum(diag(tabla.clasif.arbol1))/sum(tabla.clasif.arbol1)
+tcc2
+```
+Con la curva ROC el AUC es de 0.9352
+
+```{r}
+prediccion_arbol <- predict(arbol, datos_test, type="prob")[,2] 
+pred_arbol = prediction(prediccion_arbol, datos_test$REGTEN) 
+AUC3 <- performance(pred_arbol, "auc")
+perf3 <- performance(pred_arbol, "tpr", "fpr")
+plot(perf3, colorize = TRUE)
+abline(a = 0, b = 1)
+text(0.4, 0.6, paste(AUC3@y.name, "\n", round(unlist(AUC3@y.values), 5)), cex = 0.7)
+```
+
+
+*ÁRBOL PODADO*
+
+Determinamos el parámetro de complejidad relativo al error mínimo, y vemos que es de 0.01
+
+```{r}
+arbol$cptable[which.min(arbol$cptable[,"xerror"]),"CP"]
+```
+
+A través de este comando podemos determinar el xerror mínimo calculado
+
+```{r}
+printcp(arbol) 
+
+```
+
+
+```{r}
+arbol_podado = prune(arbol, cp = 0.010000)
+```
+
+
+```{r}
+rpart.plot(arbol_podado, box.palette = "GnBu", branch.lty = 3, 
+           shadow.col = "gray", 
+           nn = TRUE, main = "Árbol de clasificación para el régimen de tenencia")
+```
+
+Otra forma de visualizar el arbol sería de la siguiente manera
+
+```{r}
+ prp(arbol_podado, type = 2, extra = 104, fallen.leaves = TRUE, main = "Decision Tree")
+```
+
+
+El consumo que no es bajo del gasto en vacuno anual CAT2 representa en primera instancia un 52% del total de los individuos y sobre ellos un 34% son aquellos trabajadores a jornada completa y sobre ellos un 26% consumen con unos ingresos netos mensuales superiores a 7.6 (representado en cientos de euros), esto quiere decir que aquellostrabajadores con fuertes ingresos netos mensuales trabajando a jornada completa y que consumen carne vacuna son aquellos que demuestran una alta probabilidad de estar en un régimen de tenencia de bienes inmuebles en propiedad.
+
+Realizamos a continuación nuestra matriz de confusión para comparar los resultados obtenidos
+
+```{r}
+ arbol_prediccion <- predict(arbol_podado, datos_test, type = "class")
+ 
+ #  Se trabaja sobre el arbol podado
+ arbol_resultado_total <- table(datos_test$REGTEN, arbol_prediccion,
+                                dnn = c("Actual", "Predicted"))
+
+ # Tabla de doble entrada
+ arbol_resultado_total
+ tcc1 <- 100 * sum(diag(arbol_resultado_total))/sum(arbol_resultado_total)
+ tcc1
+
+```
+
+Realizando la representación de la curva ROC
+
+```{r}
+ prediccion3 <- predict(arbol_podado, datos_test, type="prob")[,2] 
+ pred3 = prediction(prediccion3, datos_test$REGTEN) 
+ 
+ AUC5 <- performance(pred3, "auc")
+ 
+ perf5 <- performance(pred3, "tpr", "fpr")
+ 
+ plot(perf5, colorize = TRUE)
+ 
+ abline(a = 0, b = 1)
+ 
+ text(0.4, 0.6, paste(AUC5@y.name, "\n", round(unlist(AUC5@y.values), 5)), cex = 0.7)
+```
+
+*CONCLUSIONES EXTRAÍDAS SEGÚN LOS ARBOLES DE CLASFICACIÍÓN*
+
+Tenemos los siguientes resultados, los cuales arrojan resultados ineteresantes. Son exactamente los mismos para el árbol tradicional que para el árbol podado
+
+: Matriz de confusión empleando árbol tradicional
+
+|        | Predecido    |             |   |
+|--------|--------------|-------------|---|
+| Actual | En propiedad | En alquiler |   |
+| 0      | 322          | 92          |   |
+| 1      | 46           | 806         |   |
+
+: Precisión de nuestro modelo y AUC con la curva ROC del árbol tradicional
+
+|           | Análi discriminante |
+|-----------|---------------------|
+| Curva ROC | 0.935               |
+| Accuracy  | 0.8909              |
+
+
+: Matriz de confusión empleando árbol podado
+
+|        | Predecido    |             |   |
+|--------|--------------|-------------|---|
+| Actual | En propiedad | En alquiler |   |
+| 0      | 322          | 92          |   |
+| 1      | 46           | 806         |   |
+
+: Precisión de nuestro modelo y ROC del árbol podado
+
+|           | Análi discriminante |
+|-----------|---------------------|
+| Curva ROC | 0.935               |
+| Accuracy  | 89.09953            |
+
+
+
+
+##CONCLUSIONES
+
+
+Vamos a representar en una tabla todos los resultados obtenidospara finalmente seleccionar qué modelo es el que realiza una mejor clasificación según el régimen de tenencia
+
+
+: Tabla de que muestra la precisión y la curva ROC de todos los modelos
+
+|           | Regresión Logística | Análisis discriminante_LDA | Análisis discriminante_QDA | Árboles de clasificación |
+|-----------|---------------------|----------------------------|----------------------------|--------------------------|
+| Curva ROC | 0.964               | 0.961                      | 0.808                      | 0.935                    |
+| Accuracy  | 90.7                | 89.73                      | 77.01                      | 89.09                    |
+
+
+Tomado todo ello en su conjunto considero que la regresión logística es la que mejor clasificación establece para la variable predictora, por tener el mejor accuracy de todos, así como una mejor curva ROC, comparando con el resto de los modelos.
+
+
+
+
+
+
+
+
+
+
